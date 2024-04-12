@@ -1,4 +1,5 @@
 <script lang="ts">
+  import SplitView from "./lib/components/layout/SplitView.svelte";
   import Titlebar from "./lib/components/main/Titlebar.svelte";
 </script>
 
@@ -6,20 +7,30 @@
   <header>
     <Titlebar />
   </header>
-  <main class="container">
+  <main>
+    <SplitView size="l150">
+      <div slot="first" class="sidebar"></div>
+      <div slot="second" class="content"></div>
+    </SplitView>
   </main>
 </div>
 
 <style>
   :global(:root) {
-    --color-accent: #E6B450;
-    --color-primary: #C5C5C5;
-    --color-secondary: #383D45;
-    --color-background: #0B0E14;
+    --color-accent: #e6b450;
+    --color-primary: #c5c5c5;
+    --color-secondary: #383d45;
+    --color-background: #0b0e14;
+
+    --header-height: 35px;
   }
 
   .app {
     height: 100%;
     background-color: var(--color-background);
+  }
+
+  main {
+    height: calc(100% - var(--header-height));
   }
 </style>
