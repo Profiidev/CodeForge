@@ -1,78 +1,123 @@
 <script lang="ts">
-  type sizeType = `${"t" | "b" | "l" | "r"}${number}`;
-  export let size: sizeType = "t10";
+  import type { ComponentAndProps as Component } from "../../utils";
+
+  export let components: [Component, Component, ...Component[]];
+  export let size: [number, ...number[]] = [50];
+  export let direction: "t" | "b" | "l" | "r" = "l";
 
   let gridStyle = "";
-  let isDragging = false;
-  let splitDirection = "";
+  let isDragging: number = 0;
   let splitContainer: HTMLDivElement;
 
   $: {
-    const { direction, value } = parseSize(size);
-    splitDirection = direction;
-    let valueString = `minmax(50px,${value}px) 4px minmax(50px,1fr)`;
+    if (components.length - 1 !== size.length)
+      throw new Error(
+        "Size array must be one element shorter than components array",
+      );
+
+    let valueString = "";
+    for (let i = 0; i < size.length; i++) {
+      valueString += `minmax(50px,${size[i]}px) 4px `;
+    }
+    valueString += "minmax(50px,1fr)";
+
     if (direction === "r" || direction === "b") {
       valueString = valueString.split(" ").reverse().join(" ");
     }
+
     gridStyle = `grid-template-${direction === "t" || direction === "b" ? "rows" : "columns"}: ${valueString};`;
   }
 
-  const parseSize = (size: sizeType) => {
-    const [complete, direction, value] = size.match(/([tb]|[lr])(\d+)/) as [
-      string,
-      string,
-      number,
-    ];
-    return { complete, direction, value };
-  };
-
-  const dragStarted = () => {
-    isDragging = true;
+  const dragStarted = (i: number) => {
+    isDragging = i;
   };
 
   const dragStopped = () => {
-    isDragging = false;
+    isDragging = 0;
   };
 
   const drag = (event: MouseEvent) => {
-    if (isDragging) {
+    if (isDragging !== 0) {
+      let prev =
+        size.slice(0, isDragging - 1).reduce((a, b) => a + b, 0) +
+        4 * (isDragging - 1);
       let newValue = 0;
-      switch (splitDirection) {
+      switch (direction) {
         case "b":
           newValue =
             splitContainer.clientHeight -
-            (event.clientY - splitContainer.offsetTop);
+            (event.clientY - splitContainer.offsetTop - prev);
           break;
         case "t":
-          newValue = event.clientY - splitContainer.offsetTop;
+          newValue = event.clientY - splitContainer.offsetTop - prev;
           break;
         case "r":
           newValue =
             splitContainer.clientWidth -
-            (event.clientX - splitContainer.offsetLeft);
+            (event.clientX - splitContainer.offsetLeft - prev);
           break;
         case "l":
-          newValue = event.clientX - splitContainer.offsetLeft;
+          newValue = event.clientX - splitContainer.offsetLeft - prev;
           break;
       }
-      size = `${splitDirection}${Math.max(0, newValue)}px` as sizeType;
+
+      newValue = Math.max(50, newValue);
+      let next = Math.max(
+        0,
+        Math.max(50, size[isDragging - 1]) -
+          Math.max(50, newValue) +
+          size[isDragging],
+      );
+
+      if (next < 50) {
+        newValue = size[isDragging - 1] - 50 + size[isDragging];
+        next = 50;
+      }
+      if (isDragging === size.length) {
+        let newTotal =
+          size.reduce((a, b) => a + b, 0) -
+          size[isDragging - 1] +
+          4 * size.length;
+        let containerSize =
+          direction === "t" || direction === "b"
+            ? splitContainer.clientHeight
+            : splitContainer.clientWidth;
+
+        if (containerSize - newTotal - newValue < 50) {
+          newValue = containerSize - newTotal - 50;
+        }
+      }
+
+      size = size.map((s, i) =>
+        i === isDragging - 1 ? newValue : i === isDragging ? next : s,
+      ) as [number, ...number[]];
     }
   };
 </script>
 
 <svelte:window on:mousemove={drag} on:mouseup={dragStopped} />
 
-<div class="splitview" style={gridStyle} bind:this={splitContainer}>
-  <slot name="first" />
-  <button
-    class="slider"
-    class:dragging={isDragging}
-    on:mousedown={dragStarted}
-    style="cursor: {splitDirection === 'l' || splitDirection === 'r'
-      ? 'ew-resize'
-      : 'ns-resize'};"
-  ></button>
-  <slot name="second" />
+<div
+  class="splitview"
+  bind:this={splitContainer}
+  style={(isDragging !== 0
+    ? `cursor: ${direction === "l" || direction === "r" ? "ew" : "ns"}-resize;`
+    : "") + gridStyle}
+>
+  <slot name="0" />
+  {#each components as component, i}
+    {#if i > 0}
+      <button
+        class="slider"
+        class:dragging={isDragging === i}
+        on:mousedown={() => dragStarted(i)}
+        style={`cursor: ${
+          direction === "l" || direction === "r" ? "ew" : "ns"
+        }-resize;`}
+      ></button>
+    {/if}
+    <svelte:component this={component.component} {...component.props} />
+  {/each}
 </div>
 
 <style>

@@ -1,6 +1,9 @@
 <script lang="ts">
+  import Test from "./lib/components/Test.svelte";
   import SplitView from "./lib/components/layout/SplitView.svelte";
+  import TabsView from "./lib/components/layout/TabsView.svelte";
   import Titlebar from "./lib/components/main/Titlebar.svelte";
+  import { component } from "./lib/utils";
 </script>
 
 <div class="app">
@@ -8,10 +11,10 @@
     <Titlebar />
   </header>
   <main>
-    <SplitView size="l150">
-      <div slot="first" class="sidebar"></div>
-      <div slot="second" class="content"></div>
-    </SplitView>
+    <SplitView
+      size={[150]}
+      components={[component(Test, {}), component(TabsView, {})]}
+    />
   </main>
 </div>
 
