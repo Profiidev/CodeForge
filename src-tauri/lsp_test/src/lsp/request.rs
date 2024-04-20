@@ -43,7 +43,6 @@ impl<T: LSPRequestTrait> LSPRequest<T> {
   pub(crate) fn as_bytes(self) -> Result<Vec<u8>, Error> {
     let req = serde_json::to_string(&self)?;
     let req = format!("Content-Length: {}\r\n\r\n{}", req.len(), req);
-    println!("{:?}", req);
     Ok(req.as_bytes().to_vec())
   }
 }

@@ -84,13 +84,13 @@ fn main() {
 
 #[macro_export]
 macro_rules! test {
-  ("test1") => {
-    "test1"
-  };
-  ("test2") => {
-    "test2"
-  };
-  ($input:expr) => {
-    $input
-  };
+    ($x:expr) => {
+        match $x {
+            "test1" => $crate::Test {},
+            "test2" => $crate::Test {},
+            _ => panic!("Unexpected value"),
+        }
+    };
 }
+
+struct Test{}

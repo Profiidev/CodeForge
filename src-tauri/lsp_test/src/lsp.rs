@@ -11,7 +11,7 @@ use lsp_types::{
   ClientCapabilities, InitializeParams, NumberOrString, WorkspaceFolder,
 };
 
-use crate::lsp::response::{LSPMessage, LSPResponse};
+use crate::lsp::{notification::RawLSPNotification, response::{LSPMessage, LSPResponse}};
 
 use self::{
   notification::LSPNotification,
@@ -27,6 +27,7 @@ pub(crate) mod utils;
 pub(crate) struct LSPClient {
   stdin: std::process::ChildStdin,
   pending: Vec<PendingRequest>,
+  not_handler: fn(RawLSPNotification),
 }
 
 #[derive(Debug)]
@@ -58,7 +59,7 @@ impl LSPClient {
       "failed to open stdout",
     ))?;
 
-    let working_token = String::from("working_token");
+    let working_token = String::from("init_token");
 
     Ok(LSPClientBuilder {
       stdin,
@@ -95,6 +96,12 @@ impl LSPClient {
     self.stdin.flush()?;
     Ok(())
   }
+
+  pub(crate) fn handle_not(&self, body: String) -> Result<(), Error> {
+    let not: RawLSPNotification = serde_json::from_str(&body)?;
+    (self.not_handler)(not);
+    Ok(())
+  }
 }
 
 impl LSPClientBuilder {
@@ -102,10 +109,12 @@ impl LSPClientBuilder {
     self,
     workspace_folders: Vec<WorkspaceFolder>,
     capabilities: ClientCapabilities,
+    not_handler: fn(RawLSPNotification),
   ) -> Result<LSP, Error> {
     let lsp_client = LSPClient {
       stdin: self.stdin,
       pending: Vec::new(),
+      not_handler,
     };
 
     let lsp = LSP {
@@ -117,13 +126,19 @@ impl LSPClientBuilder {
       let mut reader = BufReader::new(self.stdout);
 
       while let Ok(Some(msg_string)) = read_msg(&mut reader) {
-        let msg: LSPMessage = serde_json::from_str(&msg_string).unwrap();
+        let msg: LSPMessage = match serde_json::from_str(&msg_string) {
+          Ok(msg) => msg,
+          Err(_) => continue,
+        };
         let mut lsp = lsp_client.lock().unwrap();
 
         if msg.is_response() {
           lsp.resolve_pending(msg.get_id().unwrap(), msg_string);
         } else {
-          //println!("{:?}", msg_string);
+          match lsp.handle_not(msg_string) {
+            Ok(_) => (),
+            Err(_) => continue,
+          }
         }
       }
     });
@@ -152,7 +167,10 @@ impl LSPClientBuilder {
 }
 
 impl LSP {
-  pub(crate) async fn send_req<T>(&self, req: LSPRequest<T>) -> Result<LSPResponse<T>, Error>
+  pub(crate) async fn send_req<T>(
+    &self,
+    req: LSPRequest<T>,
+  ) -> Result<Option<LSPResponse<T>>, Error>
   where
     T: LSPRequestTrait,
   {
@@ -178,7 +196,7 @@ impl LSP {
 
     let lsp = self.lsp_client.lock().unwrap();
     let res = lsp.pending.iter().find(|p| p.id == id).unwrap();
-    let response = res.response.clone().unwrap();
+    let response = res.response.clone().unwrap_or_default();
     let response = LSPResponse::new(response.clone())?;
 
     Ok(response)
@@ -195,7 +213,7 @@ impl LSP {
 
 fn read_msg(reader: &mut BufReader<std::process::ChildStdout>) -> Result<Option<String>, Error> {
   fn invalid_data(error: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> io::Error {
-      io::Error::new(io::ErrorKind::InvalidData, error)
+    io::Error::new(io::ErrorKind::InvalidData, error)
   }
   macro_rules! invalid_data {
       ($($tt:tt)*) => (invalid_data(format!($($tt)*)))
@@ -218,7 +236,9 @@ fn read_msg(reader: &mut BufReader<std::process::ChildStdout>) -> Result<Option<
     }
     let mut parts = buf.splitn(2, ": ");
     let key = parts.next().unwrap();
-    let value = parts.next().ok_or_else(|| invalid_data!("Malformed header: {:?}", buf))?;
+    let value = parts
+      .next()
+      .ok_or_else(|| invalid_data!("Malformed header: {:?}", buf))?;
 
     if key.eq_ignore_ascii_case("Content-Length") {
       size = Some(value.parse::<usize>().map_err(invalid_data)?);

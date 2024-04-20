@@ -30,20 +30,23 @@ where
 pub(crate) struct LSPMessage {
   #[serde(rename = "jsonrpc")]
   _jsonrpc: Version,
+  method: Option<String>,
   id: Option<i32>,
 }
 
 impl<T: LSPRequestTrait> LSPResponse<T> {
-  pub(crate) fn new(body: String) -> Result<LSPResponse<T>, Error> {
+  pub(crate) fn new(body: String) -> Result<Option<LSPResponse<T>>, Error> {
     let res: LSPResponseBuilder<T> = serde_json::from_str(&body)?;
 
-    Ok(LSPResponse {
-      result: match res.result {
-        Some(result) => Ok(result),
-        None => Err(res.error.unwrap()),
+    let result = match res.result {
+      Some(result) => Ok(result),
+      None => match res.error {
+        Some(err) => Err(err),
+        None => return Ok(None),
       },
-      id: res.id,
-    })
+    };
+
+    Ok(Some(LSPResponse { result, id: res.id }))
   }
 }
 

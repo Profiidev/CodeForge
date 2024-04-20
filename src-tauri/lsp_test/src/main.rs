@@ -1,7 +1,9 @@
 use std::thread::sleep;
 
 use lsp::request::LSPRequest;
-use lsp::LSPClient;
+use lsp::{LSPClient, notification::LSPNotification};
+use lsp_types::notification::{Exit, Progress};
+use lsp_types::request::Shutdown;
 use lsp_types::Url;
 
 mod lsp;
@@ -21,6 +23,10 @@ async fn main() {
       }),
       ..Default::default()
     }),
+    window: Some(lsp_types::WindowClientCapabilities {
+      work_done_progress: Some(true),
+      ..Default::default()
+    }),
     ..Default::default()
   };
 
@@ -38,7 +44,7 @@ async fn main() {
     current_dir.display()
   ))
   .expect("failed to start rust-analyzer")
-  .build(work_dir, cap)
+  .build(work_dir, cap, not_handler)
   .await
   .expect("failed to build lsp client");
 
@@ -65,8 +71,26 @@ async fn main() {
     }))
     .unwrap();
 
-  let res = lsp.send_req(comp).await.expect("failed to send request");
-  println!("{:?}", res);
+  sleep(std::time::Duration::from_secs(10));
 
-  sleep(std::time::Duration::from_secs(10000));
+  //let res = lsp.send_req(comp).await.expect("failed to send request");
+  //println!("{:?}", res);
+
+  sleep(std::time::Duration::from_secs(10));
+
+  let shutdown: LSPRequest<Shutdown> = LSPRequest::new(None).expect("failed to create request");
+  let _res = lsp.send_req(shutdown).await.expect("failed to send request");
+
+  let exit: LSPNotification<Exit> = LSPNotification::new(None).expect("failed to create notification");
+  lsp.send_not(exit).expect("failed to send notification");
+}
+
+fn not_handler(not: lsp::notification::RawLSPNotification) {
+  match not.method.as_str() {
+      "$/progress" => {
+          let params: LSPNotification<Progress> = not.parse().unwrap();
+          println!("{:?}", params);
+      },
+      _ => {}
+  }
 }
