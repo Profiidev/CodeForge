@@ -1,9 +1,8 @@
 use std::thread::sleep;
 
+use lsp::request::LSPRequest;
 use lsp::LSPClient;
 use lsp_types::Url;
-use lsp::request::LSPRequest;
-use serde::{Deserialize, Serialize};
 
 mod lsp;
 
@@ -45,57 +44,29 @@ async fn main() {
 
   println!("lsp client started");
 
-  let comp: LSPRequest<lsp_types::request::Completion> = LSPRequest::new(
-    Some(lsp_types::CompletionParams {
+  let comp: LSPRequest<lsp_types::request::Completion> =
+    LSPRequest::new(Some(lsp_types::CompletionParams {
       text_document_position: lsp_types::TextDocumentPositionParams {
         text_document: lsp_types::TextDocumentIdentifier {
           uri: Url::from_directory_path(current_dir.join("src/main.rs"))
             .expect("failed to convert path to url"),
         },
         position: lsp_types::Position {
-          line: 0,
-          character: 0,
+          line: 36,
+          character: 11,
         },
       },
       context: Some(lsp_types::CompletionContext {
         trigger_kind: lsp_types::CompletionTriggerKind::INVOKED,
         trigger_character: None,
       }),
-      work_done_progress_params: lsp_types::WorkDoneProgressParams {
-        work_done_token: Some(lsp_types::NumberOrString::String("1".to_string())),
-      },
-      partial_result_params: lsp_types::PartialResultParams {
-        partial_result_token: Some(lsp_types::NumberOrString::String("1".to_string())),
-      },
-    }),
-  ).unwrap();
+      work_done_progress_params: Default::default(),
+      partial_result_params: Default::default(),
+    }))
+    .unwrap();
 
   let res = lsp.send_req(comp).await.expect("failed to send request");
   println!("{:?}", res);
 
-  let test = LSPRequest::<Test>::new(Some(Params { a: 1 })).unwrap();
-  let res = lsp.send_req(test).await.expect("failed to send request");
-  println!("{:?}", res);
-
-
   sleep(std::time::Duration::from_secs(10000));
-}
-
-#[derive(Serialize, Deserialize)]
-struct Params {
-  a: i32,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct Response {
-  b: i32,
-}
-
-#[derive(Debug)]
-enum Test {}
-
-impl lsp_types::request::Request for Test {
-  type Params = Params;
-  type Result = Response;
-  const METHOD: &'static str = "test";
 }

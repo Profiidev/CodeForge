@@ -1,5 +1,5 @@
 use std::{
-  io::{BufRead, BufReader, Error, Read, Write},
+  io::{self, BufRead, BufReader, Error, Read, Write},
   process::Command,
   sync::{Arc, Condvar, Mutex},
   thread::{self, sleep},
@@ -114,57 +114,16 @@ impl LSPClientBuilder {
 
     let lsp_client = lsp.lsp_client.clone();
     thread::spawn(move || {
-      let reader = BufReader::new(self.stdout);
+      let mut reader = BufReader::new(self.stdout);
 
-      let mut buf = String::new();
-      let mut open_brackets = 0;
-      let mut is_in_string = false;
-      let mut started = false;
-      let mut last_escape = false;
-      for byte in reader.bytes() {
-        if let Err(e) = byte {
-          println!("Error reading byte: {:?}", e);
-          continue;
-        }
+      while let Ok(Some(msg_string)) = read_msg(&mut reader) {
+        let msg: LSPMessage = serde_json::from_str(&msg_string).unwrap();
+        let mut lsp = lsp_client.lock().unwrap();
 
-        let byte = byte.unwrap() as char;
-        buf.push(byte);
-
-        match byte {
-          '{' => {
-            started = true;
-            if !is_in_string {
-              open_brackets += 1;
-            }
-          }
-          '}' => {
-            if !is_in_string {
-              open_brackets -= 1;
-            }
-          }
-          '"' => {
-            if !last_escape {
-              is_in_string = !is_in_string;
-            }
-          }
-          _ => {}
-        }
-        last_escape = byte == '\\';
-
-        if started && open_brackets == 0 {
-          let body = buf.split("\r\n\r\n").collect::<Vec<&str>>()[1];
-          let res = serde_json::from_str::<LSPMessage>(body);
-
-          if let Ok(res) = res {
-            if res.is_response() {
-              let id = res.get_id().unwrap();
-              let mut lsp = lsp_client.lock().unwrap();
-              lsp.resolve_pending(id, body.to_string());
-            }
-          }
-
-          buf.clear();
-          started = false;
+        if msg.is_response() {
+          lsp.resolve_pending(msg.get_id().unwrap(), msg_string);
+        } else {
+          //println!("{:?}", msg_string);
         }
       }
     });
@@ -183,8 +142,7 @@ impl LSPClientBuilder {
     sleep(std::time::Duration::from_millis(1));
 
     let init: LSPRequest<Initialize> = LSPRequest::new(Some(params.clone()))?;
-    let test = lsp.send_req(init).await?;
-    println!("{:?}", test);
+    let _init_res = lsp.send_req(init).await?;
 
     let inited: LSPNotification<Initialized> = LSPNotification::new(None)?;
     lsp.send_not(inited)?;
@@ -221,7 +179,6 @@ impl LSP {
     let lsp = self.lsp_client.lock().unwrap();
     let res = lsp.pending.iter().find(|p| p.id == id).unwrap();
     let response = res.response.clone().unwrap();
-    println!("{:?}", response);
     let response = LSPResponse::new(response.clone())?;
 
     Ok(response)
@@ -236,3 +193,42 @@ impl LSP {
   }
 }
 
+fn read_msg(reader: &mut BufReader<std::process::ChildStdout>) -> Result<Option<String>, Error> {
+  fn invalid_data(error: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> io::Error {
+      io::Error::new(io::ErrorKind::InvalidData, error)
+  }
+  macro_rules! invalid_data {
+      ($($tt:tt)*) => (invalid_data(format!($($tt)*)))
+  }
+
+  let mut size = None;
+  let mut buf = String::new();
+  loop {
+    buf.clear();
+    if reader.read_line(&mut buf)? == 0 {
+      return Ok(None);
+    }
+    if !buf.ends_with("\r\n") {
+      return Err(invalid_data!("Malformed header: {:?}", buf));
+    }
+
+    let buf = &buf[..buf.len() - 2];
+    if buf.is_empty() {
+      break;
+    }
+    let mut parts = buf.splitn(2, ": ");
+    let key = parts.next().unwrap();
+    let value = parts.next().ok_or_else(|| invalid_data!("Malformed header: {:?}", buf))?;
+
+    if key.eq_ignore_ascii_case("Content-Length") {
+      size = Some(value.parse::<usize>().map_err(invalid_data)?);
+    }
+  }
+  let size = size.ok_or_else(|| invalid_data!("Missing Content-Length header"))?;
+  let mut buf = buf.into_bytes();
+  buf.resize(size, 0);
+  reader.read_exact(&mut buf)?;
+  let buf = String::from_utf8(buf).map_err(invalid_data)?;
+
+  Ok(Some(buf))
+}

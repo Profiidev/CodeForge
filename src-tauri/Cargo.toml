@@ -1,4 +1,4 @@
-workspace = { members = ["lsp_test"] }
+workspace = { members = ["lsp_test", "testt"] }
 [package]
 name = "codeforge"
 version = "0.0.0"
