@@ -1,7 +1,7 @@
 use std::thread::sleep;
 
 use lsp::request::LSPRequest;
-use lsp::{LSPClient, notification::LSPNotification};
+use lsp::{LSP, notification::LSPNotification};
 use lsp_types::notification::{Exit, Progress};
 use lsp_types::request::Shutdown;
 use lsp_types::Url;
@@ -39,7 +39,7 @@ async fn main() {
       .to_string(),
   }];
 
-  let lsp = LSPClient::create(format!(
+  let lsp = LSP::create(format!(
     "{}/rust-analyzer-x86_64-pc-windows-msvc.exe",
     current_dir.display()
   ))

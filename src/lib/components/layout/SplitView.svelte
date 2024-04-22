@@ -116,7 +116,9 @@
         }-resize;`}
       ></button>
     {/if}
-    <svelte:component this={component.component} {...component.props} />
+    <div class="component">
+      <svelte:component this={component.component} {...component.props} />
+    </div>
   {/each}
 </div>
 

@@ -14,13 +14,22 @@
   <main>
     <SplitView
       size={[150]}
-      components={[c(Test, {}), c(SplitView, {
-        size: [150],
-        components: [c(TabsView, {
-          tabs: [{ name: "Tab 1", component: c(Editor, {}) }, { name: "Tab 2", component: "button"}],
-        }), c(Test, {})],
-        direction: "b",
-      })]}
+      components={[
+        c(Test, {}),
+        c(SplitView, {
+          size: [150],
+          components: [
+            c(TabsView, {
+              tabs: [
+                { name: "Tab 1", component: c(Editor, {}) },
+                { name: "Tab 2", component: "button" },
+              ],
+            }),
+            c(Test, {}),
+          ],
+          direction: "b",
+        }),
+      ]}
     />
   </main>
 </div>

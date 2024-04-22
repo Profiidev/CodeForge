@@ -10,18 +10,11 @@ use lsp_types::{
   request::{Initialize, Request as LSPRequestTrait},
   ClientCapabilities, InitializeParams, NumberOrString, WorkspaceFolder,
 };
+use regex::Regex;
 
-use crate::lsp::{notification::RawLSPNotification, response::{LSPMessage, LSPResponse}};
-
-use self::{
-  notification::LSPNotification,
-  request::{LSPRequest, PendingRequest},
+use super::{
+  info::LSPInfo, notification::{LSPNotification, RawLSPNotification}, request::{LSPRequest, PendingRequest}, response::{LSPMessage, LSPResponse}
 };
-
-pub(crate) mod notification;
-pub(crate) mod request;
-pub(crate) mod response;
-pub(crate) mod utils;
 
 #[derive(Debug)]
 pub(crate) struct LSPClient {
@@ -35,11 +28,14 @@ pub(crate) struct LSPClientBuilder {
   stdin: std::process::ChildStdin,
   stdout: std::process::ChildStdout,
   working_token: String,
+  file_patterns: Vec<Regex>,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct LSP {
-  pub lsp_client: Arc<Mutex<LSPClient>>,
+  pub(self) lsp_client: Arc<Mutex<LSPClient>>,
+  pub(super) file_patterns: Vec<Regex>,
+  pub(crate) lsp_info: Option<LSPInfo>,
 }
 
 impl LSPClient {
@@ -92,8 +88,10 @@ impl LSPClientBuilder {
       not_handler,
     };
 
-    let lsp = LSP {
+    let mut lsp = LSP {
       lsp_client: Arc::new(Mutex::new(lsp_client)),
+      file_patterns: self.file_patterns,
+      lsp_info: None,
     };
 
     let lsp_client = lsp.lsp_client.clone();
@@ -132,82 +130,18 @@ impl LSPClientBuilder {
     sleep(std::time::Duration::from_millis(1));
 
     let init: LSPRequest<Initialize> = LSPRequest::new(Some(params.clone()))?;
-    let _init_res = lsp.send_req(init).await?;
+    let init_res = lsp.send_req(init).await?;
+
+    let lsp_info = LSPInfo::new(init_res.ok_or(Error::new(
+      std::io::ErrorKind::InvalidData,
+      "no response",
+    ))?)?;
+    lsp.lsp_info = Some(lsp_info);
 
     let inited: LSPNotification<Initialized> = LSPNotification::new(None)?;
     lsp.send_not(inited)?;
 
     Ok(lsp)
-  }
-}
-
-impl LSP {
-    pub(crate) fn create(path: String) -> Result<LSPClientBuilder, Error> {
-    let mut lsp = Command::new(path)
-      .stdin(std::process::Stdio::piped())
-      .stdout(std::process::Stdio::piped())
-      .spawn()?;
-
-    let stdin = lsp.stdin.take().ok_or(Error::new(
-      std::io::ErrorKind::Other,
-      "failed to open stdin",
-    ))?;
-
-    let stdout = lsp.stdout.take().ok_or(Error::new(
-      std::io::ErrorKind::Other,
-      "failed to open stdout",
-    ))?;
-
-    let working_token = String::from("init_token");
-
-    Ok(LSPClientBuilder {
-      stdin,
-      stdout,
-      working_token,
-    })
-  }
-
-  pub(crate) async fn send_req<T>(
-    &self,
-    req: LSPRequest<T>,
-  ) -> Result<Option<LSPResponse<T>>, Error>
-  where
-    T: LSPRequestTrait,
-  {
-    let mut lsp = self.lsp_client.lock().unwrap();
-    let id = req.get_id();
-
-    let res = PendingRequest {
-      id,
-      condition: Arc::new((Mutex::new(false), Condvar::new())),
-      response: None,
-    };
-
-    lsp.pending.push(res);
-    lsp.send_req(req)?;
-
-    let (lock, cvar) = &*lsp.pending.last().unwrap().condition.clone();
-    let mut started = lock.lock().unwrap();
-    drop(lsp);
-
-    while !*started {
-      started = cvar.wait(started).unwrap();
-    }
-
-    let lsp = self.lsp_client.lock().unwrap();
-    let res = lsp.pending.iter().find(|p| p.id == id).unwrap();
-    let response = res.response.clone().unwrap_or_default();
-    let response = LSPResponse::new(response.clone())?;
-
-    Ok(response)
-  }
-
-  pub(crate) fn send_not<T>(&self, not: LSPNotification<T>) -> Result<(), Error>
-  where
-    T: LSPNotificationTrait,
-  {
-    let mut lsp = self.lsp_client.lock().unwrap();
-    lsp.send_not(not)
   }
 }
 
@@ -251,4 +185,92 @@ fn read_msg(reader: &mut BufReader<std::process::ChildStdout>) -> Result<Option<
   let buf = String::from_utf8(buf).map_err(invalid_data)?;
 
   Ok(Some(buf))
+}
+
+impl LSP {
+  pub(crate) fn create(
+    path: String,
+    file_patterns: Vec<String>,
+  ) -> Result<LSPClientBuilder, Error> {
+    let mut file_patterns_reg: Vec<Regex> = Vec::new();
+    for pattern in file_patterns {
+      let reg = match Regex::new(&pattern) {
+        Ok(reg) => reg,
+        Err(_) => {
+          return Err(Error::new(
+            std::io::ErrorKind::Other,
+            "failed to create regex",
+          ))
+        }
+      };
+      file_patterns_reg.push(reg);
+    }
+
+    let mut lsp = Command::new(path)
+      .stdin(std::process::Stdio::piped())
+      .stdout(std::process::Stdio::piped())
+      .spawn()?;
+
+    let stdin = lsp.stdin.take().ok_or(Error::new(
+      std::io::ErrorKind::Other,
+      "failed to open stdin",
+    ))?;
+
+    let stdout = lsp.stdout.take().ok_or(Error::new(
+      std::io::ErrorKind::Other,
+      "failed to open stdout",
+    ))?;
+
+    let working_token = String::from("init_token");
+
+    Ok(LSPClientBuilder {
+      stdin,
+      stdout,
+      working_token,
+      file_patterns: file_patterns_reg,
+    })
+  }
+
+  pub(crate) async fn send_req<T>(
+    &self,
+    req: LSPRequest<T>,
+  ) -> Result<Option<LSPResponse<T>>, Error>
+  where
+    T: LSPRequestTrait,
+  {
+    let mut lsp = self.lsp_client.lock().unwrap();
+    let id = req.get_id();
+
+    let res = PendingRequest {
+      id,
+      condition: Arc::new((Mutex::new(false), Condvar::new())),
+      response: None,
+    };
+
+    lsp.pending.push(res);
+    lsp.send_req(req)?;
+
+    let (lock, cvar) = &*lsp.pending.last().unwrap().condition.clone();
+    let mut started = lock.lock().unwrap();
+    drop(lsp);
+    
+    while !*started {
+      started = cvar.wait(started).unwrap();
+    }
+    
+    let lsp = self.lsp_client.lock().unwrap();
+    let res = lsp.pending.iter().find(|p| p.id == id).unwrap();
+    let response = res.response.clone().unwrap_or_default();
+    let response = LSPResponse::new(response.clone())?;
+
+    Ok(response)
+  }
+
+  pub(crate) fn send_not<T>(&self, not: LSPNotification<T>) -> Result<(), Error>
+  where
+    T: LSPNotificationTrait,
+  {
+    let mut lsp = self.lsp_client.lock().unwrap();
+    lsp.send_not(not)
+  }
 }
