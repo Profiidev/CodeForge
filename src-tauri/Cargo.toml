@@ -10,6 +10,7 @@ edition = "2021"
 
 [build-dependencies]
 tauri-build = { version = "2.0.0-beta", features = [] }
+cc = "*"
 
 [dependencies]
 tauri = { version = "2.0.0-beta", features = [] }
@@ -21,4 +22,6 @@ rand = "0.8.5"
 lazy_static = "1.4.0"
 async-std = { version = "1.12.0", features = ["attributes"] }
 regex = "1.10.4"
-
+tree-sitter = "0.22.5"
+tree-sitter-rust = "0.21.0"
+tree-sitter-highlight = "0.22.5"
