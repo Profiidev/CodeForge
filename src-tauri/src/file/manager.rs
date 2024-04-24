@@ -37,24 +37,43 @@ impl FileManager {
         ) {
           Ok(mut config) => {
             let highlight_names = [
-              "attribute",
-              "constant",
-              "function.builtin",
-              "function",
-              "keyword",
-              "operator",
-              "property",
-              "punctuation",
-              "punctuation.bracket",
-              "punctuation.delimiter",
-              "string",
-              "string.special",
-              "tag",
-              "type",
-              "type.builtin",
               "variable",
-              "variable.builtin",
               "variable.parameter",
+              "variable.member",
+              "constant",
+              "module",
+              "label",
+              "string",
+              "string.escape",
+              "string.regexp",
+              "string.special",
+              "string.special.url",
+              "string.special.path",
+              "string.special.symbol",
+              "character",
+              "boolean",
+              "number",
+              "type",
+              "attribute",
+              "property",
+              "function",
+              "function.macro",
+              "function.call",
+              "function.method",
+              "function.method.call",
+              "constructor",
+              "operator",
+              "keyword",
+              "punctuation.delimiter",
+              "punctuation.bracket",
+              "punctuation.special",
+              "comment",
+              "comment.doc",
+              "comment.error",
+              "comment.todo",
+              "comment.warning",
+              "comment.note",
+              "tag",
             ];
             config.configure(&highlight_names);
             Some((Highlighter::new(), config))
@@ -62,7 +81,7 @@ impl FileManager {
           Err(err) => {
             eprintln!("Error creating highlight configuration: {}", err);
             None
-          },
+          }
         }
       }
       None => None,
@@ -108,19 +127,21 @@ impl FileManager {
     let highlights = highlighter
       .highlight(config, file.content.as_bytes(), None, |_| None)
       .ok()?;
+    let mut i = 0;
     for event in highlights {
       match event.unwrap() {
         HighlightEvent::Source { start, end } => {
-          println!("source: {}-{}", start, end);
+          i += end - start;
         }
         HighlightEvent::HighlightStart(s) => {
-          println!("highlight style started: {:?}", s);
+          i += 1;
         }
         HighlightEvent::HighlightEnd => {
-          println!("highlight style ended");
+          i += 1;
         }
       }
     }
+    println!("highlighted {} bytes", i);
 
     None
   }

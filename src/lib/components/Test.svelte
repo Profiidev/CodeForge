@@ -13,4 +13,4 @@
 
 <div class="test" style="background-color: var(--color-secondary);"></div>
 <button on:click={test}>Test</button>
-<p>{time}</p>
+<p style="color: white;">{time}</p>

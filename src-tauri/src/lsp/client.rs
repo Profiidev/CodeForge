@@ -1,5 +1,6 @@
 use std::{
   io::{self, BufRead, BufReader, Error, Read, Write},
+  os::windows::process::CommandExt,
   process::Command,
   sync::{Arc, Condvar, Mutex},
   thread::{self, sleep},
@@ -13,7 +14,10 @@ use lsp_types::{
 use regex::Regex;
 
 use super::{
-  info::LSPInfo, notification::{LSPNotification, RawLSPNotification}, request::{LSPRequest, PendingRequest}, response::{LSPMessage, LSPResponse}
+  info::LSPInfo,
+  notification::{LSPNotification, RawLSPNotification},
+  request::{LSPRequest, PendingRequest},
+  response::{LSPMessage, LSPResponse},
 };
 
 #[derive(Debug)]
@@ -132,10 +136,8 @@ impl LSPClientBuilder {
     let init: LSPRequest<Initialize> = LSPRequest::new(Some(params.clone()))?;
     let init_res = lsp.send_req(init).await?;
 
-    let lsp_info = LSPInfo::new(init_res.ok_or(Error::new(
-      std::io::ErrorKind::InvalidData,
-      "no response",
-    ))?)?;
+    let lsp_info =
+      LSPInfo::new(init_res.ok_or(Error::new(std::io::ErrorKind::InvalidData, "no response"))?)?;
     lsp.lsp_info = Some(lsp_info);
 
     let inited: LSPNotification<Initialized> = LSPNotification::new(None)?;
@@ -206,8 +208,12 @@ impl LSP {
       file_patterns_reg.push(reg);
     }
 
-    let mut lsp = Command::new(path)
-      .stdin(std::process::Stdio::piped())
+    let mut lsp = Command::new(path);
+    
+    #[cfg(target_os = "windows")]
+    let lsp = lsp.creation_flags(0x08000000);
+
+    let mut lsp = lsp.stdin(std::process::Stdio::piped())
       .stdout(std::process::Stdio::piped())
       .spawn()?;
 
@@ -253,11 +259,11 @@ impl LSP {
     let (lock, cvar) = &*lsp.pending.last().unwrap().condition.clone();
     let mut started = lock.lock().unwrap();
     drop(lsp);
-    
+
     while !*started {
       started = cvar.wait(started).unwrap();
     }
-    
+
     let lsp = self.lsp_client.lock().unwrap();
     let res = lsp.pending.iter().find(|p| p.id == id).unwrap();
     let response = res.response.clone().unwrap_or_default();
