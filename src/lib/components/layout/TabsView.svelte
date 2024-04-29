@@ -29,6 +29,8 @@
     display: grid;
     grid-template-rows: 2em 1fr;
     background-color: var(--color-background);
+    height: 100%;
+    width: 100%;
   }
 
   .tabs-container {

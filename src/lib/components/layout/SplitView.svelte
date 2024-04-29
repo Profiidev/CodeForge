@@ -138,4 +138,8 @@
   .dragging {
     background-color: var(--color-accent);
   }
+
+  .component {
+    overflow: hidden;
+  }
 </style>

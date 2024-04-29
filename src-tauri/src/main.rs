@@ -3,9 +3,13 @@
 
 use async_std::sync::Mutex;
 use file::{manager::FileManager, parser::ParsersManager};
+use lsp::request::LSPRequest;
 use lsp_types::notification::Progress;
+use lsp_types::request::SemanticTokensFullRequest;
+use lsp_types::SemanticTokensParams;
 use tauri::{async_runtime::block_on, Manager, State, Url};
 
+use crate::file::token::TokenTree;
 use crate::lsp::{
   capabilities::get_capabilities, client::LSP, manager::LSPManager, notification::LSPNotification,
 };
@@ -17,21 +21,45 @@ pub(crate) struct AppState(Mutex<LSPManager>, Mutex<FileManager>, Mutex<ParsersM
 
 // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
 #[tauri::command]
-async fn greet(state: State<'_, AppState>) -> Result<String, ()> {
+async fn greet(state: State<'_, AppState>) -> Result<TokenTree, ()> {
   let start = std::time::Instant::now();
-  let mut res = state
-    .1
-    .lock()
-    .await;
-  let ress = res.get_highlighting("src/main.rs");
-  println!("{:?}", ress);
+  let mut res = state.1.lock().await;
+  let ress = res.get_highlighting("test/main.rs");
   println!("Highlighting done in {:?}", start.elapsed());
-  Ok("Hello".to_string())
+  Ok(ress.unwrap())
+}
+
+#[tauri::command]
+async fn test(state: State<'_, AppState>, file: String) -> Result<(), String> {
+  let start = std::time::Instant::now();
+  let lsp = state.0.lock().await;
+  let test = LSPRequest::<SemanticTokensFullRequest>::new(Some(SemanticTokensParams {
+    text_document: lsp_types::TextDocumentIdentifier {
+      uri: Url::parse(&format!("file://{}", file)).unwrap(),
+    },
+    partial_result_params: lsp_types::PartialResultParams {
+      partial_result_token: Some(lsp_types::NumberOrString::Number(1234)),
+    },
+    work_done_progress_params: lsp_types::WorkDoneProgressParams {
+      work_done_token: Some(lsp_types::NumberOrString::Number(123456)),
+    },
+  }))
+  .unwrap();
+  let res = lsp
+    .send_req(test, Url::parse(&format!("file://{}", file)).unwrap())
+    .await
+    .unwrap();
+  if let Some(res) = res {
+    println!("{:?}", res.result);
+  }
+  println!("Semantic tokens done in {:?}", start.elapsed());
+
+  Ok(())
 }
 
 fn main() {
   tauri::Builder::default()
-    .invoke_handler(tauri::generate_handler![greet])
+    .invoke_handler(tauri::generate_handler![greet, test])
     .manage(AppState(
       Mutex::new(LSPManager::new()),
       Mutex::new(FileManager::new()),
@@ -48,10 +76,10 @@ fn main() {
           .lock()
           .await
           .add_language(
-            tree_sitter_rust::language(),
-            tree_sitter_rust::HIGHLIGHT_QUERY,
-            tree_sitter_rust::INJECTIONS_QUERY,
-            tree_sitter_rust::TAGS_QUERY,
+            tree_sitter_configs::language(),
+            tree_sitter_configs::HIGHLIGHTS_QUERY,
+            tree_sitter_configs::INJECTIONS_QUERY,
+            tree_sitter_configs::TAGS_QUERY,
             "^.+\\.rs$".to_string(),
           )
           .unwrap();
@@ -59,7 +87,7 @@ fn main() {
           .1
           .lock()
           .await
-          .open_file("src/main.rs".to_string(), &*state.2.lock().await)
+          .open_file("test/main.rs".to_string(), &*state.2.lock().await)
           .unwrap();
       });
 
@@ -73,7 +101,7 @@ fn not_handler(not: lsp::notification::RawLSPNotification) {
   match not.method.as_str() {
     "$/progress" => {
       let params: LSPNotification<Progress> = not.parse().unwrap();
-      //println!("{:?}", params);
+      println!("{:?}", params);
     }
     _ => {}
   }
@@ -93,7 +121,7 @@ async fn test_lsp() -> LSP {
 
   let lsp = lsp::LSP::create(
     format!(
-      "{}/lsp_test/rust-analyzer-x86_64-pc-windows-msvc.exe",
+      "{}/test/rust-analyzer-x86_64-pc-windows-msvc.exe",
       current_dir.display()
     ),
     vec!["^.+\\.rs$".to_string()],

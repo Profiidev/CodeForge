@@ -543,6 +543,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-shell",
  "tree-sitter",
+ "tree-sitter-configs",
  "tree-sitter-highlight",
  "tree-sitter-rust",
 ]
@@ -1957,17 +1958,6 @@ dependencies = [
  "serde_json",
  "serde_repr",
  "url",
-]
-
-[[package]]
-name = "lsp_test"
-version = "0.1.0"
-dependencies = [
- "async-std",
- "lsp-types",
- "rand 0.8.5",
- "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -3642,13 +3632,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "testt"
-version = "0.1.0"
-dependencies = [
- "async-std",
-]
-
-[[package]]
 name = "thin-slice"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3937,6 +3920,14 @@ checksum = "688200d842c76dd88f9a7719ecb0483f79f5a766fb1c100756d5d8a059abc71b"
 dependencies = [
  "cc",
  "regex",
+]
+
+[[package]]
+name = "tree-sitter-configs"
+version = "0.1.0"
+dependencies = [
+ "cc",
+ "tree-sitter",
 ]
 
 [[package]]

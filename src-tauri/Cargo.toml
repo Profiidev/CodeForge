@@ -1,4 +1,4 @@
-workspace = { members = ["lsp_test", "testt"] }
+workspace = { members = ["tree-sitter-configs"] }
 [package]
 name = "codeforge"
 version = "0.0.0"
@@ -25,3 +25,4 @@ regex = "1.10.4"
 tree-sitter = "0.22.5"
 tree-sitter-rust = "0.21.0"
 tree-sitter-highlight = "0.22.5"
+tree-sitter-configs = { path = "tree-sitter-configs" }

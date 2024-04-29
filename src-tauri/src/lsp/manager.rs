@@ -19,7 +19,7 @@ impl LSPManager {
     self.lsps.push(lsp);
   }
 
-  async fn send_req<T>(
+  pub(crate) async fn send_req<T>(
     &self,
     req: LSPRequest<T>,
     path: Url,
