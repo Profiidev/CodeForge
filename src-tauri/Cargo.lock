@@ -3953,6 +3953,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "tree_sitter_test"
+version = "0.1.0"
+dependencies = [
+ "tree-sitter",
+ "tree-sitter-configs",
+ "tree-sitter-highlight",
+]
+
+[[package]]
 name = "treediff"
 version = "4.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

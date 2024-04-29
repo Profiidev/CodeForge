@@ -1,4 +1,4 @@
-workspace = { members = ["tree-sitter-configs"] }
+workspace = { members = ["tree-sitter-configs", "tree_sitter_test"] }
 [package]
 name = "codeforge"
 version = "0.0.0"
