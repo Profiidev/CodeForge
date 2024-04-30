@@ -6,7 +6,7 @@
 
   const test = async () => {
     let res: any = await invoke("test", {
-      file: "c:/Users/benja/Documents/Coding/Apps/CodeForge/src-tauri/src/main.rs",
+      file: "c:/Users/benja/Documents/Coding/Apps/CodeForge/src-tauri/test/main.rs",
     });
     code = res.tokens;
     console.log(code);

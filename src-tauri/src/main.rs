@@ -3,10 +3,8 @@
 
 use async_std::sync::Mutex;
 use file::{manager::FileManager, parser::ParsersManager};
-use lsp::request::LSPRequest;
 use lsp_types::notification::Progress;
-use lsp_types::request::SemanticTokensFullRequest;
-use lsp_types::SemanticTokensParams;
+
 use tauri::{async_runtime::block_on, Manager, State, Url};
 
 use crate::file::token::TokenTree;
@@ -24,37 +22,22 @@ pub(crate) struct AppState(Mutex<LSPManager>, Mutex<FileManager>, Mutex<ParsersM
 async fn greet(state: State<'_, AppState>) -> Result<TokenTree, ()> {
   let start = std::time::Instant::now();
   let mut res = state.1.lock().await;
-  let ress = res.get_highlighting("test/main.rs");
+  let ress = res.get_highlighting("c:/Users/benja/Documents/Coding/Apps/CodeForge/src-tauri/test/main.rs");
   println!("Highlighting done in {:?}", start.elapsed());
   Ok(ress.unwrap())
 }
 
 #[tauri::command]
-async fn test(state: State<'_, AppState>, file: String) -> Result<(), String> {
+async fn test(state: State<'_, AppState>, file: String) -> Result<TokenTree, ()> {
   let start = std::time::Instant::now();
   let lsp = state.0.lock().await;
-  let test = LSPRequest::<SemanticTokensFullRequest>::new(Some(SemanticTokensParams {
-    text_document: lsp_types::TextDocumentIdentifier {
-      uri: Url::parse(&format!("file://{}", file)).unwrap(),
-    },
-    partial_result_params: lsp_types::PartialResultParams {
-      partial_result_token: Some(lsp_types::NumberOrString::Number(1234)),
-    },
-    work_done_progress_params: lsp_types::WorkDoneProgressParams {
-      work_done_token: Some(lsp_types::NumberOrString::Number(123456)),
-    },
-  }))
-  .unwrap();
-  let res = lsp
-    .send_req(test, Url::parse(&format!("file://{}", file)).unwrap())
-    .await
-    .unwrap();
-  if let Some(res) = res {
-    println!("{:?}", res.result);
-  }
+  let mut file_manager = state.1.lock().await;
+
+  let res = file_manager.get_semantic_highlighting(&file, &lsp).await;
+
   println!("Semantic tokens done in {:?}", start.elapsed());
 
-  Ok(())
+  Ok(res.unwrap())
 }
 
 fn main() {
@@ -87,7 +70,7 @@ fn main() {
           .1
           .lock()
           .await
-          .open_file("test/main.rs".to_string(), &*state.2.lock().await)
+          .open_file("c:/Users/benja/Documents/Coding/Apps/CodeForge/src-tauri/test/main.rs".to_string(), &*state.2.lock().await)
           .unwrap();
       });
 
@@ -124,6 +107,7 @@ async fn test_lsp() -> LSP {
       "{}/test/rust-analyzer-x86_64-pc-windows-msvc.exe",
       current_dir.display()
     ),
+    &[],
     vec!["^.+\\.rs$".to_string()],
   )
   .expect("failed to start rust-analyzer")

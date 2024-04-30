@@ -25,15 +25,15 @@ pub(crate) struct PendingRequest {
 }
 
 impl<T: LSPRequestTrait> LSPRequest<T> {
-  pub(crate) fn new(body: Option<T::Params>) -> Result<LSPRequest<T>, Error> {
+  pub(crate) fn new(body: Option<T::Params>) -> LSPRequest<T> {
     let id = random::<i32>().abs();
 
-    Ok(LSPRequest {
+    LSPRequest {
       jsonrpc: Version::V2,
       method: T::METHOD.to_string(),
       params: body,
       id,
-    })
+    }
   }
 
   pub(crate) fn get_id(&self) -> i32 {

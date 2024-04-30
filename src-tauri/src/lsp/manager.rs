@@ -1,7 +1,12 @@
 use std::io::Error;
 
-use lsp_types::request::Request as LSPRequestTrait;
+use lsp_types::{
+  request::{Request as LSPRequestTrait, SemanticTokensFullRequest},
+  SemanticTokensParams, SemanticTokensResult,
+};
 use tauri::Url;
+
+use crate::file::{parser::get_highlighting_name, token::Token};
 
 use super::{client::LSP, request::LSPRequest, response::LSPResponse};
 
@@ -42,5 +47,66 @@ impl LSPManager {
         .iter()
         .any(|pattern| pattern.is_match(&path.as_str()))
     })
+  }
+
+  pub(crate) async fn get_semantic_tokens(
+    &self,
+    path: &str,
+    content: String,
+  ) -> Option<Vec<Vec<Token>>> {
+    let uri = Url::parse(&format!("file://{}", path)).ok()?;
+    let test = LSPRequest::<SemanticTokensFullRequest>::new(Some(SemanticTokensParams {
+      text_document: lsp_types::TextDocumentIdentifier { uri: uri.clone() },
+      partial_result_params: Default::default(),
+      work_done_progress_params: Default::default(),
+    }));
+    let res = self
+    .send_req(test, uri.clone())
+    .await
+    .ok()??;
+    println!("{:?}", res.result);
+    let res = res.result
+      .ok()??;
+    let data = match res {
+      SemanticTokensResult::Partial(partial) => partial.data,
+      SemanticTokensResult::Tokens(full) => full.data,
+    };
+
+    let token_info = self
+      .get_lsp(&uri)?
+      .lsp_info
+      .as_ref()?
+      .semantic_token_info
+      .as_ref()?;
+
+    let mut tokens = vec![Vec::new()];
+    let mut current_char = 0;
+    for token in data {
+      for _ in 0..token.delta_line {
+        tokens.push(Vec::new());
+      }
+
+      current_char += token.delta_start;
+      tokens.last_mut().unwrap().push(Token {
+        token: content[current_char as usize..(current_char + token.length) as usize].to_string(),
+        type_: match get_highlighting_name(&token_info.get_token_type(token.token_type))
+        {
+          Some(t) => t.clone(),
+          None => "".to_string(),
+        },
+        modifiers: Some(
+          token_info
+            .get_token_modifiers(token.token_type)
+            .iter()
+            .map(|m| match get_highlighting_name(m) {
+              Some(t) => t.clone(),
+              None => "".to_string(),
+            })
+            .collect(),
+        ),
+      });
+    }
+
+    Some(tokens)
   }
 }

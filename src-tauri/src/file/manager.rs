@@ -2,6 +2,8 @@ use std::io::Error;
 
 use tree_sitter_highlight::{HighlightConfiguration, HighlightEvent, Highlighter};
 
+use crate::lsp::manager::LSPManager;
+
 use super::{
   parser::{ParsersManager, HIGHLIGHTING_NAMES},
   token::{Token, TokenTree},
@@ -101,11 +103,13 @@ impl FileManager {
             tokens.push(Token {
               token: file.content[start..end].to_string(),
               type_: current_token_types.last().unwrap().to_string(),
+              modifiers: None,
             });
           } else {
             tokens.push(Token {
               token: file.content[start..end].to_string(),
               type_: "".to_string(),
+              modifiers: None,
             });
           }
         }
@@ -119,8 +123,20 @@ impl FileManager {
     }
 
     let mut token_tree = TokenTree::new();
-    token_tree.set_tokens(tokens);
+    token_tree.set_raw_tokens(tokens);
 
     Some(token_tree)
+  }
+
+  pub(crate) async fn get_semantic_highlighting(
+    &mut self,
+    path: &str,
+    lsp_manager: &LSPManager,
+  ) -> Option<TokenTree> {
+    let file = self.get_file_mut(path)?;
+
+    let mut tree = TokenTree::new();
+    tree.set_tokens(lsp_manager.get_semantic_tokens(path, file.content.clone()).await?);
+    Some(tree)
   }
 }

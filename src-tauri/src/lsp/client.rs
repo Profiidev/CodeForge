@@ -133,7 +133,7 @@ impl LSPClientBuilder {
     //wait for listener to start
     sleep(std::time::Duration::from_millis(1));
 
-    let init: LSPRequest<Initialize> = LSPRequest::new(Some(params.clone()))?;
+    let init: LSPRequest<Initialize> = LSPRequest::new(Some(params.clone()));
     let init_res = lsp.send_req(init).await?;
 
     let lsp_info =
@@ -192,6 +192,7 @@ fn read_msg(reader: &mut BufReader<std::process::ChildStdout>) -> Result<Option<
 impl LSP {
   pub(crate) fn create(
     path: String,
+    args: &[&str],
     file_patterns: Vec<String>,
   ) -> Result<LSPClientBuilder, Error> {
     let mut file_patterns_reg: Vec<Regex> = Vec::new();
@@ -215,6 +216,7 @@ impl LSP {
 
     let mut lsp = lsp.stdin(std::process::Stdio::piped())
       .stdout(std::process::Stdio::piped())
+      .args(args)
       .spawn()?;
 
     let stdin = lsp.stdin.take().ok_or(Error::new(

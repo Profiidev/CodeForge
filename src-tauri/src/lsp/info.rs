@@ -16,7 +16,7 @@ pub(crate) struct SemanticTokenInfo {
 }
 
 impl LSPInfo {
-  pub fn new(init_res: LSPResponse<Initialize>) -> Result<Self, Error> {
+  pub(crate) fn new(init_res: LSPResponse<Initialize>) -> Result<Self, Error> {
     let server_capabilities = init_res.result.expect("no result").capabilities;
     let semantic_token_info = match server_capabilities.semantic_tokens_provider {
       Some(token_capability) => match token_capability {
@@ -37,7 +37,7 @@ impl LSPInfo {
 }
 
 impl SemanticTokenInfo {
-  pub fn new(options: SemanticTokensOptions) -> Self {
+  pub(crate) fn new(options: SemanticTokensOptions) -> Self {
     Self {
       token_types: options
         .legend
@@ -54,11 +54,11 @@ impl SemanticTokenInfo {
     }
   }
 
-  pub fn get_token_type(&self, idx: u32) -> String {
+  pub(crate) fn get_token_type(&self, idx: u32) -> String {
     self.token_types[idx as usize].clone()
   }
 
-  pub fn get_token_modifier(&self, modifiers: u32) -> Vec<String> {
+  pub(crate) fn get_token_modifiers(&self, modifiers: u32) -> Vec<String> {
     let mut modifiers_vec = Vec::new();
     for i in 0..31 {
       if modifiers & (1 << i) != 0 {
