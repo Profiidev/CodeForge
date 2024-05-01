@@ -22,7 +22,7 @@ pub(crate) struct AppState(Mutex<LSPManager>, Mutex<FileManager>, Mutex<ParsersM
 async fn greet(state: State<'_, AppState>) -> Result<TokenTree, ()> {
   let start = std::time::Instant::now();
   let mut res = state.1.lock().await;
-  let ress = res.get_highlighting("c:/Users/benja/Documents/Coding/Apps/CodeForge/src-tauri/test/main.rs");
+  let ress = res.get_highlighting("c:/Users/benja/Documents/Coding/Apps/CodeForge/src-tauri/src/main.rs");
   println!("Highlighting done in {:?}", start.elapsed());
   Ok(ress.unwrap())
 }
@@ -33,11 +33,11 @@ async fn test(state: State<'_, AppState>, file: String) -> Result<TokenTree, ()>
   let lsp = state.0.lock().await;
   let mut file_manager = state.1.lock().await;
 
-  let res = file_manager.get_semantic_highlighting(&file, &lsp).await;
+  let res = file_manager.get_semantic_highlighting(&file, &lsp).await.unwrap();
 
   println!("Semantic tokens done in {:?}", start.elapsed());
 
-  Ok(res.unwrap())
+  Ok(res)
 }
 
 fn main() {
@@ -70,7 +70,7 @@ fn main() {
           .1
           .lock()
           .await
-          .open_file("c:/Users/benja/Documents/Coding/Apps/CodeForge/src-tauri/test/main.rs".to_string(), &*state.2.lock().await)
+          .open_file("c:/Users/benja/Documents/Coding/Apps/CodeForge/src-tauri/src/main.rs".to_string(), &*state.2.lock().await)
           .unwrap();
       });
 

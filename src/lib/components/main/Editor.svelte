@@ -6,13 +6,13 @@
 
   const test = async () => {
     let res: any = await invoke("test", {
-      file: "c:/Users/benja/Documents/Coding/Apps/CodeForge/src-tauri/test/main.rs",
+      file: "c:/Users/benja/Documents/Coding/Apps/CodeForge/src-tauri/src/main.rs",
     });
     code = res.tokens;
     console.log(code);
   };
 
-  test();
+  //test();
 </script>
 
 <button on:click={test}>Test</button>
@@ -21,7 +21,11 @@
     <div class="block">
       <span class="block-span">
         {#each block as token}
-          <span class="token" style="color: {test_style.tokenColors[token.type]};">{token.token}</span>
+          <span
+            class="token"
+            style="color: {test_style.tokenColors[token.type]};"
+            >{token.token}</span
+          >
         {/each}
       </span>
     </div>

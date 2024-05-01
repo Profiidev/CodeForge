@@ -60,18 +60,19 @@ impl LSPManager {
       partial_result_params: Default::default(),
       work_done_progress_params: Default::default(),
     }));
+
     let res = self
-    .send_req(test, uri.clone())
-    .await
-    .ok()??;
-    println!("{:?}", res.result);
-    let res = res.result
+      .send_req(test, uri.clone())
+      .await
+      .ok()??
+      .result
       .ok()??;
+
     let data = match res {
       SemanticTokensResult::Partial(partial) => partial.data,
       SemanticTokensResult::Tokens(full) => full.data,
     };
-
+    println!("{:?}", data);
     let token_info = self
       .get_lsp(&uri)?
       .lsp_info
@@ -80,31 +81,8 @@ impl LSPManager {
       .as_ref()?;
 
     let mut tokens = vec![Vec::new()];
-    let mut current_char = 0;
     for token in data {
-      for _ in 0..token.delta_line {
-        tokens.push(Vec::new());
-      }
-
-      current_char += token.delta_start;
-      tokens.last_mut().unwrap().push(Token {
-        token: content[current_char as usize..(current_char + token.length) as usize].to_string(),
-        type_: match get_highlighting_name(&token_info.get_token_type(token.token_type))
-        {
-          Some(t) => t.clone(),
-          None => "".to_string(),
-        },
-        modifiers: Some(
-          token_info
-            .get_token_modifiers(token.token_type)
-            .iter()
-            .map(|m| match get_highlighting_name(m) {
-              Some(t) => t.clone(),
-              None => "".to_string(),
-            })
-            .collect(),
-        ),
-      });
+      //TODO: handle tokens
     }
 
     Some(tokens)

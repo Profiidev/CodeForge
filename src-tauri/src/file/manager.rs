@@ -136,7 +136,11 @@ impl FileManager {
     let file = self.get_file_mut(path)?;
 
     let mut tree = TokenTree::new();
-    tree.set_tokens(lsp_manager.get_semantic_tokens(path, file.content.clone()).await?);
+    tree.set_tokens(
+      lsp_manager
+        .get_semantic_tokens(path, file.content.clone())
+        .await?,
+    );
     Some(tree)
   }
 }
