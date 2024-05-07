@@ -27,10 +27,10 @@ impl FileManager {
 
   pub(crate) fn open_file(
     &mut self,
-    path: String,
+    path: &str,
     parser_manager: &ParsersManager,
   ) -> Result<(), Error> {
-    let highlighter = match parser_manager.get_language(&path) {
+    let highlighter = match parser_manager.get_language(path) {
       Some((language, highlights_query, injection_query, locals_query)) => {
         match HighlightConfiguration::new(
           language.clone(),
@@ -53,14 +53,14 @@ impl FileManager {
     };
 
     //read an add \r\n to each line
-    let content = std::fs::read_to_string(&path)?
+    let content = std::fs::read_to_string(path)?
       .lines()
       .map(|s| s.to_string())
       .map(|s| s + "\r\n")
       .collect();
 
     self.open_files.push(File {
-      path,
+      path: path.to_string(),
       content,
       highlighter,
     });

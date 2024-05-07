@@ -9,7 +9,8 @@ use tauri::{async_runtime::block_on, Manager, State, Url};
 
 use crate::file::token::TokenTree;
 use crate::lsp::{
-  capabilities::get_capabilities, client::LSPData, manager::LSPManager, notification::LSPNotification,
+  capabilities::get_capabilities, client::LSPData, manager::LSPManager,
+  notification::LSPNotification,
 };
 
 mod file;
@@ -75,7 +76,7 @@ fn main() {
           .lock()
           .await
           .open_file(
-            "c:/Users/benja/Documents/Coding/Apps/CodeForge/src-tauri/src/main.rs".to_string(),
+            "c:/Users/benja/Documents/Coding/Apps/CodeForge/src-tauri/src/main.rs",
             &*state.2.lock().await,
           )
           .unwrap();
@@ -110,16 +111,17 @@ async fn test_lsp() -> LSPData {
       .to_string(),
   }];
 
-  lsp::LSPData::create(
-    format!(
+  LSPData::create()
+    .path(format!(
       "{}/test/rust-analyzer-x86_64-pc-windows-msvc.exe",
       current_dir.display()
-    ),
-    &[],
-    vec!["^.+\\.rs$".to_string()],
-  )
-  .expect("failed to start rust-analyzer")
-  .build(work_dir, get_capabilities(), not_handler)
-  .await
-  .expect("failed to build lsp client")
+    ))
+    .args(Vec::new())
+    .file_patterns(vec!["^.+\\.rs$".to_string()])
+    .workspace_folders(work_dir)
+    .capabilities(get_capabilities())
+    .not_handler(not_handler)
+    .build()
+    .await
+    .expect("failed to build lsp client")
 }

@@ -29,10 +29,12 @@ pub(crate) struct LSPClient {
 
 #[derive(Debug)]
 pub(crate) struct LSPClientBuilder {
-  stdin: std::process::ChildStdin,
-  stdout: std::process::ChildStdout,
-  working_token: String,
-  file_patterns: Vec<Regex>,
+  path: Option<String>,
+  args: Option<Vec<String>>,
+  file_patterns: Option<Vec<String>>,
+  workspace_folders: Option<Vec<WorkspaceFolder>>,
+  capabilities: Option<ClientCapabilities>,
+  not_handler: Option<fn(RawLSPNotification)>,
 }
 
 #[derive(Debug, Clone)]
@@ -74,26 +76,87 @@ impl LSPClient {
 }
 
 impl LSPClientBuilder {
-  pub(crate) async fn build(
-    self,
-    workspace_folders: Vec<WorkspaceFolder>,
-    capabilities: ClientCapabilities,
-    not_handler: fn(RawLSPNotification),
-  ) -> Result<LSPData, Error> {
+  pub(crate) fn path(mut self, path: String) -> Self {
+    self.path = Some(path);
+    self
+  }
+
+  pub(crate) fn args(mut self, args: Vec<String>) -> Self {
+    self.args = Some(args);
+    self
+  }
+
+  pub(crate) fn file_patterns(mut self, file_patterns: Vec<String>) -> Self {
+    self.file_patterns = Some(file_patterns);
+    self
+  }
+
+  pub(crate) fn workspace_folders(mut self, workspace_folders: Vec<WorkspaceFolder>) -> Self {
+    self.workspace_folders = Some(workspace_folders);
+    self
+  }
+
+  pub(crate) fn capabilities(mut self, capabilities: ClientCapabilities) -> Self {
+    self.capabilities = Some(capabilities);
+    self
+  }
+
+  pub(crate) fn not_handler(mut self, not_handler: fn(RawLSPNotification)) -> Self {
+    self.not_handler = Some(not_handler);
+    self
+  }
+
+  pub(crate) async fn build(self) -> Result<LSPData, Error> {
+    let path = self.path.ok_or(anyhow::anyhow!("No path"))?;
+    let args = self.args.unwrap_or_default();
+    let file_patterns = self.file_patterns.ok_or(anyhow::anyhow!("No file patterns"))?;
+    let workspace_folders = self.workspace_folders.ok_or(anyhow::anyhow!("No workspace folders"))?;
+    let capabilities = self.capabilities.ok_or(anyhow::anyhow!("No capabilities"))?;
+    let not_handler = self.not_handler.unwrap_or(|_| ());
+
+    let mut file_patterns_reg: Vec<Regex> = Vec::new();
+    for pattern in file_patterns {
+      let reg = Regex::new(&pattern)?;
+      file_patterns_reg.push(reg);
+    }
+
+    let mut lsp = Command::new(path);
+
+    #[cfg(target_os = "windows")]
+    let lsp = lsp.creation_flags(0x08000000);
+
+    let mut lsp = lsp
+      .stdin(std::process::Stdio::piped())
+      .stdout(std::process::Stdio::piped())
+      .args(args)
+      .spawn()?;
+
+    let stdin = lsp
+      .stdin
+      .take()
+      .ok_or(anyhow::anyhow!("failed to open stdin"))?;
+
+    let stdout = lsp
+      .stdout
+      .take()
+      .ok_or(anyhow::anyhow!("failed to open stdout"))?;
+
+    let working_token = String::from("init_token");
+
     let lsp_client = LSPClient {
-      stdin: self.stdin,
+      stdin,
       pending: Vec::new(),
     };
 
     let mut lsp = LSPData {
       lsp_client: Arc::new(Mutex::new(lsp_client)),
-      file_patterns: self.file_patterns,
+      file_patterns: file_patterns_reg,
       lsp_info: None,
     };
 
     let lsp_client = lsp.lsp_client.clone();
     thread::spawn(move || {
-      let mut reader = BufReader::new(self.stdout);
+      let mut reader = BufReader::new(stdout);
 
       while let Ok(Some(msg_string)) = read_msg(&mut reader) {
         let msg: LSPMessage = match serde_json::from_str(&msg_string) {
@@ -120,7 +183,7 @@ impl LSPClientBuilder {
       workspace_folders: Some(workspace_folders),
       capabilities,
       work_done_progress_params: lsp_types::WorkDoneProgressParams {
-        work_done_token: Some(NumberOrString::String(self.working_token)),
+        work_done_token: Some(NumberOrString::String(working_token)),
       },
       ..Default::default()
     };
@@ -178,46 +241,15 @@ fn read_msg(reader: &mut BufReader<std::process::ChildStdout>) -> Result<Option<
 }
 
 impl LSPData {
-  pub(crate) fn create(
-    path: String,
-    args: &[&str],
-    file_patterns: Vec<String>,
-  ) -> Result<LSPClientBuilder, Error> {
-    let mut file_patterns_reg: Vec<Regex> = Vec::new();
-    for pattern in file_patterns {
-      let reg = Regex::new(&pattern)?;
-      file_patterns_reg.push(reg);
+  pub(crate) fn create() -> LSPClientBuilder {
+    LSPClientBuilder {
+      path: None,
+      args: None,
+      file_patterns: None,
+      workspace_folders: None,
+      capabilities: None,
+      not_handler: None,
     }
-
-    let mut lsp = Command::new(path);
-
-    #[cfg(target_os = "windows")]
-    let lsp = lsp.creation_flags(0x08000000);
-
-    let mut lsp = lsp
-      .stdin(std::process::Stdio::piped())
-      .stdout(std::process::Stdio::piped())
-      .args(args)
-      .spawn()?;
-
-    let stdin = lsp
-      .stdin
-      .take()
-      .ok_or(anyhow::anyhow!("failed to open stdin"))?;
-
-    let stdout = lsp
-      .stdout
-      .take()
-      .ok_or(anyhow::anyhow!("failed to open stdout"))?;
-
-    let working_token = String::from("init_token");
-
-    Ok(LSPClientBuilder {
-      stdin,
-      stdout,
-      working_token,
-      file_patterns: file_patterns_reg,
-    })
   }
 
   pub(crate) async fn send_req<T>(
