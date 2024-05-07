@@ -1,5 +1,4 @@
-use std::io::Error;
-
+use anyhow::Error;
 use lsp_types::{request::Initialize, SemanticTokensOptions, SemanticTokensServerCapabilities};
 
 use super::response::LSPResponse;

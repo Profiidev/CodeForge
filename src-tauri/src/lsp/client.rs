@@ -1,11 +1,12 @@
 use std::{
-  io::{self, BufRead, BufReader, Error, Read, Write},
+  io::{BufRead, BufReader, Read, Write},
   os::windows::process::CommandExt,
   process::Command,
   sync::{Arc, Condvar, Mutex},
   thread::{self, sleep},
 };
 
+use anyhow::Error;
 use lsp_types::{
   notification::{Initialized, Notification as LSPNotificationTrait},
   request::{Initialize, Request as LSPRequestTrait},
@@ -24,7 +25,6 @@ use super::{
 pub(crate) struct LSPClient {
   stdin: std::process::ChildStdin,
   pending: Vec<PendingRequest>,
-  not_handler: fn(RawLSPNotification),
 }
 
 #[derive(Debug)]
@@ -36,7 +36,7 @@ pub(crate) struct LSPClientBuilder {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct LSP {
+pub(crate) struct LSPData {
   pub(self) lsp_client: Arc<Mutex<LSPClient>>,
   pub(super) file_patterns: Vec<Regex>,
   pub(crate) lsp_info: Option<LSPInfo>,
@@ -47,7 +47,7 @@ impl LSPClient {
   where
     T: LSPRequestTrait,
   {
-    self.stdin.write(req.as_bytes()?.as_slice())?;
+    self.stdin.write_all(req.as_bytes()?.as_slice())?;
     self.stdin.flush()?;
     Ok(())
   }
@@ -67,14 +67,8 @@ impl LSPClient {
   where
     T: LSPNotificationTrait,
   {
-    self.stdin.write(not.as_bytes()?.as_slice())?;
+    self.stdin.write_all(not.as_bytes()?.as_slice())?;
     self.stdin.flush()?;
-    Ok(())
-  }
-
-  pub(crate) fn handle_not(&self, body: String) -> Result<(), Error> {
-    let not: RawLSPNotification = serde_json::from_str(&body)?;
-    (self.not_handler)(not);
     Ok(())
   }
 }
@@ -85,14 +79,13 @@ impl LSPClientBuilder {
     workspace_folders: Vec<WorkspaceFolder>,
     capabilities: ClientCapabilities,
     not_handler: fn(RawLSPNotification),
-  ) -> Result<LSP, Error> {
+  ) -> Result<LSPData, Error> {
     let lsp_client = LSPClient {
       stdin: self.stdin,
       pending: Vec::new(),
-      not_handler,
     };
 
-    let mut lsp = LSP {
+    let mut lsp = LSPData {
       lsp_client: Arc::new(Mutex::new(lsp_client)),
       file_patterns: self.file_patterns,
       lsp_info: None,
@@ -107,23 +100,25 @@ impl LSPClientBuilder {
           Ok(msg) => msg,
           Err(_) => continue,
         };
-        let mut lsp = lsp_client.lock().unwrap();
 
         if msg.is_response() {
+          let mut lsp = lsp_client.lock().unwrap();
           lsp.resolve_pending(msg.get_id().unwrap(), msg_string);
         } else {
-          match lsp.handle_not(msg_string) {
-            Ok(_) => (),
+          let not: RawLSPNotification = match serde_json::from_str(&msg_string) {
+            Ok(not) => not,
             Err(_) => continue,
-          }
+          };
+
+          thread::spawn(move || not_handler(not));
         }
       }
     });
 
     let params = InitializeParams {
-      process_id: Some(std::process::id() as u32),
+      process_id: Some(std::process::id()),
       workspace_folders: Some(workspace_folders),
-      capabilities: capabilities,
+      capabilities,
       work_done_progress_params: lsp_types::WorkDoneProgressParams {
         work_done_token: Some(NumberOrString::String(self.working_token)),
       },
@@ -136,8 +131,8 @@ impl LSPClientBuilder {
     let init: LSPRequest<Initialize> = LSPRequest::new(Some(params.clone()));
     let init_res = lsp.send_req(init).await?;
 
-    let lsp_info =
-      LSPInfo::new(init_res.ok_or(Error::new(std::io::ErrorKind::InvalidData, "no response"))?)?;
+    let lsp_info = LSPInfo::new(init_res.ok_or(anyhow::anyhow!("No Init Response"))?)?;
+    println!("{:?}", lsp_info);
     lsp.lsp_info = Some(lsp_info);
 
     let inited: LSPNotification<Initialized> = LSPNotification::new(None)?;
@@ -148,13 +143,6 @@ impl LSPClientBuilder {
 }
 
 fn read_msg(reader: &mut BufReader<std::process::ChildStdout>) -> Result<Option<String>, Error> {
-  fn invalid_data(error: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> io::Error {
-    io::Error::new(io::ErrorKind::InvalidData, error)
-  }
-  macro_rules! invalid_data {
-      ($($tt:tt)*) => (invalid_data(format!($($tt)*)))
-  }
-
   let mut size = None;
   let mut buf = String::new();
   loop {
@@ -163,7 +151,7 @@ fn read_msg(reader: &mut BufReader<std::process::ChildStdout>) -> Result<Option<
       return Ok(None);
     }
     if !buf.ends_with("\r\n") {
-      return Err(invalid_data!("Malformed header: {:?}", buf));
+      return Err(anyhow::anyhow!("Malformed header: {:?}", buf));
     }
 
     let buf = &buf[..buf.len() - 2];
@@ -174,22 +162,22 @@ fn read_msg(reader: &mut BufReader<std::process::ChildStdout>) -> Result<Option<
     let key = parts.next().unwrap();
     let value = parts
       .next()
-      .ok_or_else(|| invalid_data!("Malformed header: {:?}", buf))?;
+      .ok_or_else(|| anyhow::anyhow!("Malformed header: {:?}", buf))?;
 
     if key.eq_ignore_ascii_case("Content-Length") {
-      size = Some(value.parse::<usize>().map_err(invalid_data)?);
+      size = Some(value.parse::<usize>()?);
     }
   }
-  let size = size.ok_or_else(|| invalid_data!("Missing Content-Length header"))?;
+  let size = size.ok_or_else(|| anyhow::anyhow!("Missing Content-Length header"))?;
   let mut buf = buf.into_bytes();
   buf.resize(size, 0);
   reader.read_exact(&mut buf)?;
-  let buf = String::from_utf8(buf).map_err(invalid_data)?;
+  let buf = String::from_utf8(buf)?;
 
   Ok(Some(buf))
 }
 
-impl LSP {
+impl LSPData {
   pub(crate) fn create(
     path: String,
     args: &[&str],
@@ -197,37 +185,30 @@ impl LSP {
   ) -> Result<LSPClientBuilder, Error> {
     let mut file_patterns_reg: Vec<Regex> = Vec::new();
     for pattern in file_patterns {
-      let reg = match Regex::new(&pattern) {
-        Ok(reg) => reg,
-        Err(_) => {
-          return Err(Error::new(
-            std::io::ErrorKind::Other,
-            "failed to create regex",
-          ))
-        }
-      };
+      let reg = Regex::new(&pattern)?;
       file_patterns_reg.push(reg);
     }
 
     let mut lsp = Command::new(path);
-    
+
     #[cfg(target_os = "windows")]
     let lsp = lsp.creation_flags(0x08000000);
 
-    let mut lsp = lsp.stdin(std::process::Stdio::piped())
+    let mut lsp = lsp
+      .stdin(std::process::Stdio::piped())
       .stdout(std::process::Stdio::piped())
       .args(args)
       .spawn()?;
 
-    let stdin = lsp.stdin.take().ok_or(Error::new(
-      std::io::ErrorKind::Other,
-      "failed to open stdin",
-    ))?;
+    let stdin = lsp
+      .stdin
+      .take()
+      .ok_or(anyhow::anyhow!("failed to open stdin"))?;
 
-    let stdout = lsp.stdout.take().ok_or(Error::new(
-      std::io::ErrorKind::Other,
-      "failed to open stdout",
-    ))?;
+    let stdout = lsp
+      .stdout
+      .take()
+      .ok_or(anyhow::anyhow!("failed to open stdout"))?;
 
     let working_token = String::from("init_token");
 

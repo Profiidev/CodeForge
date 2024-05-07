@@ -1,5 +1,4 @@
-use std::io::Error;
-
+use anyhow::Error;
 use regex::Regex;
 use tree_sitter::Language;
 
@@ -52,7 +51,7 @@ pub(crate) const HIGHLIGHTING_NAMES: [&str; 46] = [
   "comment.documentation",
 ];
 
-pub(crate) const SEMANTIC_TOKEN_MAP: [(&str, &str); 23] = [
+pub(crate) const SEMANTIC_TOKEN_MAP: [(&str, &str); 27] = [
   ("namespace", "module"),
   ("type", "type"),
   ("class", "type"),
@@ -63,7 +62,7 @@ pub(crate) const SEMANTIC_TOKEN_MAP: [(&str, &str); 23] = [
   ("parameter", "variable.parameter"),
   ("variable", "variable"),
   ("property", "variable.member"),
-  ("enumMember", "variable.member"),
+  ("enumMember", "type"),
   ("event", "variable"),
   ("function", "function"),
   ("method", "function"),
@@ -75,7 +74,11 @@ pub(crate) const SEMANTIC_TOKEN_MAP: [(&str, &str); 23] = [
   ("number", "number"),
   ("regexp", "string.regexp"),
   ("operator", "operator"),
-  ("decorator", "attribute"),
+  ("decorator", "label"),
+  ("punctuation", "punctuation.delimiter"),
+  ("brace", "punctuation.bracket"),
+  ("bracket", "punctuation.bracket"),
+  ("parenthesis", "punctuation.bracket"),
 ];
 
 pub(crate) fn get_highlighting_name(name: &str) -> Option<String> {
@@ -113,18 +116,10 @@ impl ParsersManager {
     file_pattern: String,
   ) -> Result<(), Error> {
     if tree_sitter::LANGUAGE_VERSION != language.version() {
-      return Err(Error::new(
-        std::io::ErrorKind::InvalidData,
-        "Language version mismatch",
-      ));
+      return Err(anyhow::anyhow!("Language version mismatch"));
     }
 
-    let language_name = Regex::new(&file_pattern).or_else(|_| {
-      Err(Error::new(
-        std::io::ErrorKind::InvalidData,
-        "Invalid file pattern",
-      ))
-    })?;
+    let language_name = Regex::new(&file_pattern)?;
 
     self.languages.push(ParserLanguage {
       language: (

@@ -1,5 +1,4 @@
-use std::io::Error;
-
+use anyhow::Error;
 use tree_sitter_highlight::{HighlightConfiguration, HighlightEvent, Highlighter};
 
 use crate::lsp::manager::LSPManager;
@@ -15,7 +14,7 @@ pub(crate) struct FileManager {
 
 pub(crate) struct File {
   path: String,
-  content: String,
+  content: Vec<String>,
   highlighter: Option<(Highlighter, HighlightConfiguration)>,
 }
 
@@ -53,7 +52,12 @@ impl FileManager {
       None => None,
     };
 
-    let content = std::fs::read_to_string(&path)?;
+    //read an add \r\n to each line
+    let content = std::fs::read_to_string(&path)?
+      .lines()
+      .map(|s| s.to_string())
+      .map(|s| s + "\r\n")
+      .collect();
 
     self.open_files.push(File {
       path,
@@ -68,30 +72,19 @@ impl FileManager {
   }
 
   pub(crate) fn get_file(&self, path: &str) -> Option<&File> {
-    for file in &self.open_files {
-      if file.path == path {
-        return Some(file);
-      }
-    }
-
-    None
+    self.open_files.iter().find(|file| file.path == path)
   }
 
   pub(crate) fn get_file_mut(&mut self, path: &str) -> Option<&mut File> {
-    for file in &mut self.open_files {
-      if file.path == path {
-        return Some(file);
-      }
-    }
-
-    None
+    self.open_files.iter_mut().find(|file| file.path == path)
   }
 
   pub(crate) fn get_highlighting(&mut self, path: &str) -> Option<TokenTree> {
     let file = self.get_file_mut(path)?;
+    let content = file.content.join("");
     let (highlighter, config) = file.highlighter.as_mut()?;
     let highlights = highlighter
-      .highlight(config, file.content.as_bytes(), None, |_| None)
+      .highlight(config, content.as_bytes(), None, |_| None)
       .ok()?;
 
     let mut tokens = Vec::new();
@@ -101,13 +94,15 @@ impl FileManager {
         HighlightEvent::Source { start, end } => {
           if !current_token_types.is_empty() {
             tokens.push(Token {
-              token: file.content[start..end].to_string(),
+              start: 0,
+              token: content[start..end].to_string(),
               type_: current_token_types.last().unwrap().to_string(),
               modifiers: None,
             });
           } else {
             tokens.push(Token {
-              token: file.content[start..end].to_string(),
+              start: 0,
+              token: content[start..end].to_string(),
               type_: "".to_string(),
               modifiers: None,
             });
@@ -133,14 +128,18 @@ impl FileManager {
     path: &str,
     lsp_manager: &LSPManager,
   ) -> Option<TokenTree> {
+    let mut syntax_tree = self.get_highlighting(path)?;
     let file = self.get_file_mut(path)?;
 
-    let mut tree = TokenTree::new();
-    tree.set_tokens(
+    let mut semantic_tree = TokenTree::new();
+    semantic_tree.set_tokens(
       lsp_manager
-        .get_semantic_tokens(path, file.content.clone())
+        .get_semantic_tokens(path, &file.content)
         .await?,
     );
-    Some(tree)
+
+    syntax_tree.merge(semantic_tree);
+
+    Some(syntax_tree)
   }
 }

@@ -1,5 +1,6 @@
-use std::{io::Error, sync::{Arc, Condvar, Mutex}};
+use std::sync::{Arc, Condvar, Mutex};
 
+use anyhow::Error;
 use lsp_types::request::Request as LSPRequestTrait;
 use rand::random;
 use serde::Serialize;
@@ -40,7 +41,7 @@ impl<T: LSPRequestTrait> LSPRequest<T> {
     self.id
   }
 
-  pub(crate) fn as_bytes(self) -> Result<Vec<u8>, Error> {
+  pub(crate) fn as_bytes(&self) -> Result<Vec<u8>, Error> {
     let req = serde_json::to_string(&self)?;
     let req = format!("Content-Length: {}\r\n\r\n{}", req.len(), req);
     Ok(req.as_bytes().to_vec())

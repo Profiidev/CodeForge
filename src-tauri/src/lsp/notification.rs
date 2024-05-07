@@ -1,5 +1,4 @@
-use std::io::Error;
-
+use anyhow::Error;
 use lsp_types::notification::Notification as LSPNotificationTrait;
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -31,7 +30,7 @@ impl<T: LSPNotificationTrait> LSPNotification<T> {
     })
   }
 
-  pub(crate) fn as_bytes(self) -> Result<Vec<u8>, Error> {
+  pub(crate) fn as_bytes(&self) -> Result<Vec<u8>, Error> {
     let not = serde_json::to_string(&self)?;
     let not = format!("Content-Length: {}\r\n\r\n{}", not.len(), not);
     Ok(not.as_bytes().to_vec())

@@ -9,7 +9,7 @@ use tauri::{async_runtime::block_on, Manager, State, Url};
 
 use crate::file::token::TokenTree;
 use crate::lsp::{
-  capabilities::get_capabilities, client::LSP, manager::LSPManager, notification::LSPNotification,
+  capabilities::get_capabilities, client::LSPData, manager::LSPManager, notification::LSPNotification,
 };
 
 mod file;
@@ -22,7 +22,8 @@ pub(crate) struct AppState(Mutex<LSPManager>, Mutex<FileManager>, Mutex<ParsersM
 async fn greet(state: State<'_, AppState>) -> Result<TokenTree, ()> {
   let start = std::time::Instant::now();
   let mut res = state.1.lock().await;
-  let ress = res.get_highlighting("c:/Users/benja/Documents/Coding/Apps/CodeForge/src-tauri/src/main.rs");
+  let ress =
+    res.get_highlighting("c:/Users/benja/Documents/Coding/Apps/CodeForge/src-tauri/src/main.rs");
   println!("Highlighting done in {:?}", start.elapsed());
   Ok(ress.unwrap())
 }
@@ -33,7 +34,10 @@ async fn test(state: State<'_, AppState>, file: String) -> Result<TokenTree, ()>
   let lsp = state.0.lock().await;
   let mut file_manager = state.1.lock().await;
 
-  let res = file_manager.get_semantic_highlighting(&file, &lsp).await.unwrap();
+  let res = file_manager
+    .get_semantic_highlighting(&file, &lsp)
+    .await
+    .unwrap();
 
   println!("Semantic tokens done in {:?}", start.elapsed());
 
@@ -70,7 +74,10 @@ fn main() {
           .1
           .lock()
           .await
-          .open_file("c:/Users/benja/Documents/Coding/Apps/CodeForge/src-tauri/src/main.rs".to_string(), &*state.2.lock().await)
+          .open_file(
+            "c:/Users/benja/Documents/Coding/Apps/CodeForge/src-tauri/src/main.rs".to_string(),
+            &*state.2.lock().await,
+          )
           .unwrap();
       });
 
@@ -81,16 +88,17 @@ fn main() {
 }
 
 fn not_handler(not: lsp::notification::RawLSPNotification) {
+  #[allow(clippy::single_match)]
   match not.method.as_str() {
     "$/progress" => {
       let params: LSPNotification<Progress> = not.parse().unwrap();
-      println!("{:?}", params);
+      //println!("{:?}", params);
     }
     _ => {}
   }
 }
 
-async fn test_lsp() -> LSP {
+async fn test_lsp() -> LSPData {
   let current_dir = std::env::current_dir().expect("failed to get current directory");
 
   let work_dir = vec![lsp_types::WorkspaceFolder {
@@ -102,7 +110,7 @@ async fn test_lsp() -> LSP {
       .to_string(),
   }];
 
-  let lsp = lsp::LSP::create(
+  lsp::LSPData::create(
     format!(
       "{}/test/rust-analyzer-x86_64-pc-windows-msvc.exe",
       current_dir.display()
@@ -113,7 +121,5 @@ async fn test_lsp() -> LSP {
   .expect("failed to start rust-analyzer")
   .build(work_dir, get_capabilities(), not_handler)
   .await
-  .expect("failed to build lsp client");
-
-  lsp
+  .expect("failed to build lsp client")
 }

@@ -1,0 +1,3 @@
+[submodule "src-tauri/tree_sitter_configs"]
+	path = src-tauri/tree_sitter_configs
+	url = git@github.com:Profiidev/tree_sitter_configs.git
